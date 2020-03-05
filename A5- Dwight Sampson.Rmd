@@ -1,0 +1,81 @@
+---
+title: "Assignment 5"
+author: "Dwight Sampson"
+output: html_notebook
+---
+
+2. Some people believe that the full moon can cause changes in behaviour. In one study, aggressive behaviour in dementia patients (in a hospital) was observed. The experimenters suspected that there might be more aggressive behaviour on days close to a full moon. The number of incidents of aggressive behaviour for each patient on each day was recorded. After that, each day was classiﬁed as a “moon day” (within 3 days of a full moon) or an “other day” (not close to a full moon), and, for each patient, the mean number of aggressive incidents on moon days and other days was recorded.(Note: we only have averages for moon days and other days for each patient. If we had numbers of aggressive incidents for each day and each patient, we would be dealing with repeated measures, multiple observations per individual under diﬀerent conditions. But we don’t; just analyzing the means is simpler.)
+
+
+
+  a) Read in and display (some of) the data.
+```{r}
+#*Ctrl+Alt+I* add new code chunk
+library(devtools)
+library(tidyverse)
+library(smmr)
+
+url <- "http://ritsokiguess.site/STAC33/moon.csv"
+dataset <- read_csv(url)
+head(dataset)
+# moon days are within 3 days of full moon
+# other days are not
+```
+  <br />
+
+  b)  Explain brieﬂy, in the context of this data set, why this is a matched pairs experiment.
+  Solution:
+  
+  This is a paired experiment since the experiment puts the patient through 2 conditions (moon days and other days) and records the values. Thus there are two (or a pair) of values associated to each patient.
+  
+  
+  <br />
+  c)  What is the principal assumption behind the matched pairs t-test? Obtain a graph that would enable you to assess this assumption. (You don’t need to interpret the graph until later.)
+  Solution:
+  
+  The assumption we make for the matched pairs t-test is normality. The data must be normally distributed.
+  
+```{r}
+#dif = the effect of moondays over otherdays
+dataset %>% mutate(dif = moonday-otherday) -> dataset
+#plot the normality of dif 
+ggplot(dataset, aes(sample= dif)) + stat_qq() + stat_qq_line() + ggtitle("QQ-Plot of Aggression")
+```
+  
+  
+  
+ <br /> 
+  d)  Carry out a suitable matched-pairs t-test and interpret the results. (Do this even if you think some other test is better. The critical analysis comes later.)
+
+  Solution: 
+  
+  We are slightly concerned by the 3 data points at the bottom of the plot. This indicates the data may not be normal. 
+```{r}
+with(dataset, t.test(moonday, otherday, paired = T))
+```
+
+  The T-test indicates that there is a clear difference between the two means. Since the p-value is tiny and less than 0.05 we reject H_0: all means are the same. 
+```{r}
+mean(dataset$moonday)
+mean(dataset$otherday)
+```
+  
+  When we combine this info with the fact that there is a clear difference in means between moondays and others we can conclude Moondays have a clear increase in aggressive behaviour.
+  
+  
+  <br />
+  e)  Carry out a suitable matched-pairs sign test on these data, and interpret the results. (Do this even if you think some other test is better.)
+
+  Solution: 
+```{r}
+sign_test(dataset,dif,0)
+```
+  The p-values of the two-sided test clearly indicate that the means between the two values are different.
+  
+  
+  <br />
+  f)  Which of the two tests you did is better? Explain brieﬂy.
+
+  Sign Test is better since we dont have normality, even though we arrived at the same answer. 
+  
+  
