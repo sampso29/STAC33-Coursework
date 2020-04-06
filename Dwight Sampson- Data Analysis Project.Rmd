@@ -1,0 +1,239 @@
+---
+title: "STAC33 Data Analysis Project"
+author: "Dwight Sampson"
+output: html_notebook
+---
+<br>
+<br>
+
+
+###Introduction
+In the discipline of sociology and other social sciences, there has always been questions as to whether crowding in a city
+affects that cities crime rates. <br>
+<br>
+What is crowding? <br>
+Crowding occurs when there is a large density of people in a particular area. We know the formula for density is
+$pop. density = quantity of people /area $.
+<br>
+Our goal is to determine whether crime rate depends on population density or any other factor. <br>
+<br>
+Please note, that all the cities in our dataset are American cities. Our dataset is structured as below. 
+<br>
+Variables:
+<br>
+* city: the name of the city <br>
+* population: population of the city in thousands <br>
+* nonwhite: the percentage of nonwhite citizens in a particular city <br>
+* density: the population density for a city measured in people per sq. mile <br>
+* crime rate: (number of reported crimes / total population) <br>
+<br>
+It is my hypothesis that as the population of a city increases so too does the crime rate.
+
+<br>
+<br>
+
+
+###Analysis 
+
+The first step of our analysis is to read the data into our environment and take a look at the data.
+```{r}
+library(tidyverse)
+url <- "http://www.utsc.utoronto.ca/%7ebutler/c32/crowding.txt"
+crime <- read_delim(url, " ")
+sample_n(crime, 10)
+```
+<br>
+<br>
+There are ```r nrow(crime)``` rows in the crime table. Lets remove rows from the table that have missing values. This is due to the fact that all missing values are in the columns population and population density and we want to know if crime rate depends on these columns.
+
+```{r}
+#missing values are marked by a question mark (?)
+#remove any missing values 
+crime_propr <- crime %>% filter(population!='?', density!='?')
+# transform population and density columns from character type columns to numeric type columns 
+crime_propr$population <- as.numeric(strsplit(crime_propr$population, " "))
+crime_propr$density <- as.numeric(strsplit(crime_propr$density, " "))
+
+#should we classify people by small city, medium city and large city? Then make a box-plot of average crime rate in each?
+```
+
+By removing all missing values from the crime table, we are left with ```r nrow(crime_propr)``` oberservations. Meaning there were ```r nrow(crime) - nrow(crime_propr)``` rows with missing values.<br>
+<br>
+<br>
+There are different ways to classify cities but we choose to classify them as follows: large metropolitans have a population over 1.5 million, metropolitans have populations between 500,000 and 1.5 million, medium cities have populations between 200,000 and 500,000 and anything else is a small city [^1]. 
+
+[^1]: https://data.oecd.org/popregion/urban-population-by-city-size.htm
+
+<br>
+Lets investigate if there is a noticable difference in crime rate for each city size. The best way to visualize this is by boxplot.
+```{r}
+# a fcn that classifies every city by population x
+class_city <- function(x) {
+  ans <- ""
+  if (x > 1500){ans <- "Large Metro"}
+  else if (x > 500 && x <= 1500){ans <- "Metro"}
+  else if (x > 200 && x <= 500){ans <- "Medium"}
+  else{ans <- "Small"}
+  return(ans)
+}
+
+#look at the population of every city and classify it 
+city_type <- numeric(nrow(crime_propr))
+for (i in 1:nrow(crime_propr)){
+  row <- crime_propr$population[i]
+  city_type[i] <- class_city(row)
+}
+
+crime_propr %>% mutate(type = city_type) -> crime_city
+ggplot(crime_city, aes(x= type, y=crime)) +geom_boxplot()
+```
+The box-plot indicates to use that there are no outliers in each of the various types of cities. Notice, each city type also has equal variance. Additionally, there is some overlap between Medium Cities, Metropolitans and Large Metropolitans. Though it is noteworth that crime does seem to increase as the size of the city increases. 
+<br>
+```{r}
+ggplot(crime_city, aes(sample=crime)) + stat_qq() + stat_qq_line() + facet_wrap(~type)
+```
+
+As we can see above, our data is normally distributed (all points are about the quantile line) and has equal variance (paralel slope). Is there a difference between our groups?
+```{r}
+crime_aov <- aov(crime ~ type, data = crime_city)
+summary(crime_aov)
+```
+Yes a difference does exist between the 3 variuos types of cities in our dataset. Where does this difference exist?
+```{r}
+TukeyHSD(crime_aov)
+```
+The p-values from the Tukey Test indicate to us that all the sizes of cities in our dataset are different from one another statistically. <br>
+Now lets investigate whether crime depends on any of the variables mentioned in the introduction:
+<br>
+<br>
+<br>
+
+##### Linear Regression
+Let's try to observe any obvious relationship in our data.
+```{r}
+crime_propr %>% pivot_longer( c(population:density), names_to = "column", values_to = "x") %>%
+  ggplot(aes(x=x, y= crime)) + geom_point() + facet_wrap(~ column, scales = "free")
+```
+
+Our numeric variables indicate to us that there are strong linear relationships between crime and each variable. Though we seem to have a few outlier values in each plot.
+<br>
+<br>
+We will choose not to do any analysis on the individual cities. Why? This is due to the fact that our goal is to know if crime rate depends on any variable.
+
+```{r}
+mod_1 <- lm(crime ~ density + nonwhite + population, data= crime_propr)   # the full model
+summary(mod_1)
+```
+Notice, there is a low $R^2$ but we have 3 significant variables. Additionally, our p-value for the model is telling us that the model we have fit is much better than the empty model.
+
+
+Lets check our residuals:
+```{r}
+ggplot(mod_1, aes(x=.fitted, y= .resid)) + geom_point() + ggtitle("Residual Plot - fitted vs residual")
+```
+There is no discernable pattern of the residual plot (fitted vs residual). All points are randomly about the line y=0. This is good and indicates that our model assumptions hold. <br>
+<br>
+
+```{r}
+library(broom) #library need for augment fcn
+mod_1 %>% augment(crime_propr) %>% 
+  pivot_longer( c(population:density), names_to = "column", values_to = "x") %>%
+  ggplot(aes(x=x, y= .resid)) + geom_point() + facet_wrap(~ column, scales = "free") +
+  ggtitle("Residual Plot - variable vs residual")
+
+```
+We know that there are more cities with small population density than cities with large population density. This is the nature of the data. <br>
+<br>
+From the graph above, we cannot tell if the points in the residual plot are grouped together because of the nature of the data or because there is a pattern we are not accounting for. <br>
+<br>
+ Since we cannot fit all points in the plot if we zoom in, we will look at a smaller subset of the data zoomed in to determine any patterns.
+<br>
+```{r}
+mod_1 %>% augment(crime_propr) %>% 
+  filter(crime_propr$density < 5000) %>%
+  pivot_longer( c(population:density), names_to = "column", values_to = "x") %>%
+  ggplot(aes(x=x, y= .resid)) + geom_point() + facet_wrap(~ column, scales = "free") +
+  ggtitle("Residual Plot - variable vs residual - Zoomed in")
+```
+The residual plots are nicely spaced about the y=0 for each variable. There is grouping on the right hand side but this could be due to the nature of the data we expressed above.
+<br>
+Lets double check that we dont need to do any transformations on our data (specifically the response variable):
+
+```{r}
+library(MASS) #library need for Box-Cox
+boxcox(crime ~ density + nonwhite + population, data= crime_propr)
+```
+
+The Box-Cox test indicates to us that the response is fine as it is and needs no transformation. This is due to the fact that we recieved a lambda value of 1.
+<br>
+<br>
+<br>
+Although there isnt any numerical transformation we can do to improve our model is it possible to improve the model by 
+using categorical regression? In particular, by accounting for population using the city type variable instead of the regular population variable can we get a better model fit?
+```{r}
+city_lm <- lm(crime ~ density + nonwhite + type, data= crime_city) 
+summary(city_lm)
+```
+There is a significant improvement in $R^2$ between this model and our multiple regression model (mod_1). Thus the model does have a better fit.
+<br>
+lets check our residual plots:
+```{r}
+ggplot(city_lm, aes(x=.fitted, y= .resid)) + geom_point() + ggtitle("Residual Plot - fitted vs residual- Categorical")
+```
+This fitted vs residual plot looks even better than the one we acheived using population as a predictor of crime. The residual plots are nicely spaced on the x-axis, and randomly placed about the y=0 for each variable.
+
+```{r}
+city_lm %>% augment(crime_city) %>% 
+  filter(crime_propr$density < 5000) %>%
+  pivot_longer( c(population:density), names_to = "column", values_to = "x") %>%
+  ggplot(aes(x=x, y= .resid)) + geom_point() + facet_wrap(~ column, scales = "free") +
+  ggtitle("Residual Plot - variable vs residual- Categorical zoomed in")
+```
+The residual plots are nicely spaced, and randomly placed about the y=0 for each variable. Thus, we can move forward with model building.
+<br>
+<br>
+<br>
+
+
+##### Model building:
+
+Lets start elliminating variables that arent significant.
+```{r}
+#this is the full model
+tidy(city_lm) %>% arrange(p.value)
+```
+Density has a very large p-value, meaning it isnt statistically significant to our model. 
+Thus, we will take density out of the model.
+```{r}
+#the model that uses categorical regression replacing population with city type
+mod_2 <- update(city_lm, .~ .-density)
+summary(mod_2)
+```
+
+There are no more non-significant terms to remove, so the model where crime is predicted from city type and percentage of non-white citizens (mod_2) is our final model. It is important that we see significant reductions in the average crime rate as the city type becomes smaller.
+<br>
+Lets look at the residuals for the new model:
+```{r}
+ggplot(mod_2, aes(x=.fitted, y= .resid)) + geom_point() + ggtitle("Model 2: Residual Plot - fitted vs residual")
+```
+
+There is no discernable pattern of the residual plot (fitted vs residual). All points are randomly about the line y=0. This is good and indicates that our model assumptions hold. <br>
+<br>
+
+```{r}
+mod_2 %>% augment(crime_city) %>% 
+  filter(crime_propr$density < 5000) %>%
+  pivot_longer( c(population:density), names_to = "column", values_to = "x") %>%
+  ggplot(aes(x=x, y= .resid)) + geom_point() + facet_wrap(~ column, scales = "free") +
+  ggtitle("Model 2: Residual Plot - variable vs residual")
+
+```
+The residual plots are nicely spaced about the y=0 for each variable. There is grouping on the right hand side but this could be due to the nature of the data we expressed above.
+
+
+### Conclusion 
+
+Through our analysis we have determined that crime rate does not depend on population density but rather it depends on population size in the form of city type and the percentage of nonwhite citizens in a particular city. Thus, as population increases we also see an increase in crime rate this is evident in both our boxplot and linear regression. Addition there is a significant increase in crime rate of about 22 units for every 1% increase in the percentage of non-white citizens in a particular city. <br>
+
+<br>
+It should be noted that this model () is only a weak predictor of crime rate. For a stronger model, we need to explore concepts like why crime increases when the percentage of non-white citizens increase in a population. Additionaaly, we need to explore more cities with high population what we classified as large metropolitans.
